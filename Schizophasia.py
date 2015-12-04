@@ -3,6 +3,7 @@ import os.path
 import json
 import shutil
 import random
+import sys
 
 random.seed()
 
@@ -39,7 +40,8 @@ class Word:
     def fromJsonObject(self, obj):
         self.body = obj["body"]
         self.count = obj["uses"]
-        self.prevWords = obj["prevs"]
+        self.prevWords = obj["nexts"]
+        self.sums = obj["sums"]
 
 
     def getNextWord(self, prevWords, 
@@ -74,6 +76,7 @@ class WordsDictionary:
         self.body = {}
         self.size = 0
         self.lastWord = Word('')
+        self.parafraphCounter = Word('')
 
     def pushWord(self, nextWord, lastWords):
         isNoun = (not self.isPunctMark(nextWord) and nextWord.istitle() and 
@@ -92,9 +95,16 @@ class WordsDictionary:
     def readWordsGetter(self, getter):
         lastWords = []
         word = wordsGetter.getWord()
+        nSentances = 0
         while word != '':
-            self.pushWord(word, lastWords)
-            lastWords.append(word)
+            if (self.isSentanceTerminator(word)):
+                nSentances += 1
+            if (word == '\n'):
+                self.parafraphCounter.addNextWord(str(nSentances), [''])
+                nSentances = 0
+            else:
+                self.pushWord(word, lastWords)
+                lastWords.append(word)
             word = wordsGetter.getWord()
 
         for i in range(self.deep):
@@ -105,7 +115,7 @@ class WordsDictionary:
     def _generateParagraph(self, lastWords, length):
         result = []
         lastWords = ['.'] if len(lastWords) == 0 else lastWords
-        nSentances = -1
+        nSentances = 0
         nWords = 0
         while nSentances < length:
             word = self.body[lastWords[-1]]
@@ -113,8 +123,10 @@ class WordsDictionary:
             
             if not self.isPunctMark(newWord.body):
                 result.append(' ')
-            if self.isSentanceTerminator(newWord.body):
+            elif self.isSentanceTerminator(newWord.body):
                 nSentances += 1
+
+            if self.isSentanceTerminator(lastWords[-1]):
                 result.append(newWord.body.capitalize())
             else:
                 result.append(newWord.body)
@@ -130,9 +142,11 @@ class WordsDictionary:
         result = []
         lastWords = []
         while nWords < length:
-            paragraph, lastWords, l = self._generateParagraph(lastWords, 7)
+            nPars = int(self.parafraphCounter.getNextWord(['']))
+            paragraph, lastWords, l = self._generateParagraph(lastWords, nPars)
             nWords += l
             result.extend(paragraph)
+            result.append('\n')
         return ''.join(result)
 
 
@@ -140,7 +154,7 @@ class WordsDictionary:
         vals = self.body.values()
         vals.sort(key = sortFunc)
         file = open(fileName, 'w')
-        file.write(''.join(['SUMMARY:', ',', str(self.size), '\n']))
+        file.write(''.join(['', ', ,', str(self.size), '\n']))
         for i in vals:
             file.write(''.join([i.body, ',', str(i.count), '\n']))
         file.close()
@@ -151,8 +165,6 @@ class WordsDictionary:
         os.mkdir(folderName + "/")
 
         for word in self.body.values():
-            vals = word.nextWords.items()
-            vals.sort(key = lambda a: -a[1])
             fName = word.body
             # cause Win names
             # may fail in UNIX
@@ -160,11 +172,19 @@ class WordsDictionary:
                 fName = "$QUESTION$"
             elif fName == 'aux':
                 fName = '_aux'
-
             file = open(''.join([folderName, '/', fName, '.csv']), 'w')
-            file.write(''.join(['SUMMARY:', ',', str(word.count), '\n']))
-            for i in vals:
-                file.write(''.join([i[0], ',', str(i[1]), '\n']))
+            file.write(''.join(['SUMMARY:', ',', str(word.count), '\n\n']))
+            prevItems = word.prevWords.items();
+            prevItems.sort(key = lambda a: len(a[0].split(' ')))
+            for prevSequence, nextsMap in prevItems:
+                vals = nextsMap.items()
+                vals.sort(key = lambda a: -a[1])
+
+                for i in vals:
+                    file.write(','.join([prevSequence, i[0], str(i[1])]))
+                    file.write("\n")
+                file.write("\n")
+
             file.close()
 
 
@@ -183,9 +203,10 @@ class WordsDictionary:
         result = {}
         for word in self.body:
             result[word] = {
-                "body": word,
+                "body": self.body[word].body,
                 "uses": self.body[word].count,
-                "nexts": self.body[word].nextWords
+                "nexts": self.body[word].prevWords,
+                "sums": self.body[word].sums,
                 }
 
         f = open(fileName, 'w')
@@ -256,7 +277,7 @@ class FileWordsGetter:
                 if text[i: i+3] == '...':
                     i += 2
                     result.append('...')
-                if c in ['.', '!', '?']:
+                elif WordsDictionary.isPunctMark(c):
                     result.append(c)
             i += 1
         return result
@@ -299,18 +320,25 @@ class FolderWordsGetter:
 
 
 
-
-
 dict = WordsDictionary()
-wordsGetter = FolderWordsGetter('corpus')
 
-#dict.fromJson('firstStatistic.json')
+if len(sys.argv) < 3:
+    print 'Not enough arguments'
+    sys.exit(-1)
 
+if sys.argv[1] == 'fromText':
+    folderName = sys.argv[2]
+    wordsGetter = FolderWordsGetter(folderName)
+    dict.readWordsGetter(wordsGetter)
+elif sys.argv[1] == 'fromJson':
+    jsonFile = sys.argv[2]
+    dict.fromJson(jsonFile)
 
-#dict.toCsv('firstStatistic.csv', 'secondStatisticCsvs')
-#dict.toJson('firstStatistic.json')
+if sys.argv.count('export') > 0:
+    dict.toCsv('firstStatistic.csv', 'secondStatisticCsvs')
+    dict.toJson('firstStatistic.json')
 
-
-dict.readWordsGetter(wordsGetter)
-print dict.generateText(100)
+out = open('out.txt', 'w')
+out.write(dict.generateText(sys.argv[3]))
+out.close()
 

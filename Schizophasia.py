@@ -54,8 +54,6 @@ class Word:
         
         exPrevWords = prevWords
         prevWords = prevWords.lower() if isinstance(prevWords, str) else ' '.join(prevWords).lower()
-        if not self.prevWords.has_key(prevWords):
-            print 'shit'
         nextWordCounts = self.prevWords[prevWords].items()
         nextWordCounts.sort(key = lambda (a, b): -b)
 
@@ -121,7 +119,7 @@ class WordsDictionary:
             word = self.body[lastWords[-1]]
             newWord = self.body[word.getNextWord(lastWords[-2:]).lower()]
             
-            if not self.isPunctMark(newWord.body):
+            if not (self.isPunctMark(newWord.body) or newWord.body == '-'):
                 result.append(' ')
             elif self.isSentanceTerminator(newWord.body):
                 nSentances += 1
@@ -147,6 +145,7 @@ class WordsDictionary:
             nWords += l
             result.extend(paragraph)
             result.append('\n')
+            print 'generated: ', nWords, ' words'
         return ''.join(result)
 
 
@@ -238,7 +237,7 @@ class WordsDictionary:
  
     def isPunctMark(word):
         return word in ['.', '...', '?', '!', ',', '/', '\\', '|', 
-                        '@', '#', '$', '%', '^', ':', ';', '*', '+']
+                        '@', '#', '$', '%', '^', ':', ';', '*', '+', '-']
 
     isPunctMark = staticmethod(isPunctMark)
     
@@ -267,7 +266,7 @@ class FileWordsGetter:
         i = 0
         while i < len(text):
             c = text[i]
-            if c.isalpha() or c in ['`', '\'', '-']:
+            if c.isalpha() or c in ['`', '-']:
                 lastWord += c
             else:
                 if lastWord != '':
@@ -278,6 +277,8 @@ class FileWordsGetter:
                     i += 2
                     result.append('...')
                 elif WordsDictionary.isPunctMark(c):
+                    result.append(c)
+                elif c == '\n':
                     result.append(c)
             i += 1
         return result
@@ -339,6 +340,6 @@ if sys.argv.count('export') > 0:
     dict.toJson('firstStatistic.json')
 
 out = open('out.txt', 'w')
-out.write(dict.generateText(sys.argv[3]))
+out.write(dict.generateText(int(sys.argv[3])))
 out.close()
 
